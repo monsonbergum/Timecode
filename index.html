@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#000000">
+  <title>Timecode</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg:     #000000;
+      --text:   #ffffff;
+      --dim:    #555555;
+      --red:    #E03030;
+      --sep:    rgba(255,255,255,0.4);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
+      width: 100dvw;
+      height: 100dvh;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: background 60ms linear, color 60ms linear;
+    }
+
+    body.flash {
+      background: #ffffff;
+      --text:   #000000;
+      --dim:    rgba(0,0,0,0.4);
+      --sep:    rgba(0,0,0,0.4);
+    }
+
+    /* Portrait: show rotate hint */
+    #rotate-hint {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #444;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      z-index: 100;
+    }
+
+    @media (orientation: portrait) {
+      #rotate-hint { display: flex; }
+      #app          { display: none; }
+    }
+
+    /* ── App layout ── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      width: 100dvw;
+      height: 100dvh;
+      padding:
+        max(env(safe-area-inset-top),  10px)
+        max(env(safe-area-inset-right), 0px)
+        max(env(safe-area-inset-bottom),10px)
+        max(env(safe-area-inset-left),  0px);
+    }
+
+    /* Header: date + rate buttons */
+    #header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(6px, 1.4vh, 14px);
+      padding-top: clamp(4px, 1vh, 12px);
+      flex-shrink: 0;
+    }
+
+    #date {
+      font-size: clamp(10px, 2.2vmin, 18px);
+      font-weight: 300;
+      letter-spacing: 0.12em;
+      color: var(--dim);
+      text-transform: uppercase;
+      transition: color 60ms;
+    }
+
+    #rates {
+      display: flex;
+      gap: clamp(6px, 1.4vmin, 14px);
+      align-items: center;
+    }
+
+    .rate-btn {
+      padding: clamp(3px, 0.7vh, 7px) clamp(10px, 1.8vmin, 18px);
+      border-radius: clamp(5px, 0.9vmin, 9px);
+      border: 1px solid var(--dim);
+      background: transparent;
+      color: var(--dim);
+      font-size: clamp(9px, 1.9vmin, 16px);
+      font-weight: 400;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: border-color 150ms, color 150ms;
+      white-space: nowrap;
+    }
+
+    .rate-btn.active {
+      border-color: var(--text);
+      color: var(--text);
+    }
+
+    .rate-btn.df-btn {
+      border-color: var(--dim);
+      color: var(--dim);
+    }
+
+    .rate-btn.df-btn.df-on {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    /* Timecode area */
+    #tc-area {
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      padding-left: clamp(12px, 3.5vw, 52px);
+      padding-bottom: clamp(10px, 2.5vh, 32px);
+    }
+
+    #tc {
+      font-size: clamp(40px, min(14.5vw, 40dvh), 220px);
+      font-weight: 100;
+      line-height: 1;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+
+    #tc .hms {
+      color: var(--text);
+      transition: color 60ms;
+    }
+
+    #tc .col {
+      color: var(--sep);
+      transition: color 60ms;
+    }
+
+    #tc .fsep {
+      color: var(--sep);
+      transition: color 60ms;
+    }
+
+    #tc .fr {
+      color: var(--red);
+    }
+  </style>
+</head>
+<body>
+
+<div id="rotate-hint">
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2" y="7" width="20" height="14" rx="2"/>
+    <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+  </svg>
+  <span>Rotate to landscape</span>
+</div>
+
+<div id="app">
+  <div id="header">
+    <div id="date">SAT, JUN 28, 2025</div>
+    <div id="rates">
+      <button class="rate-btn" data-rate="23.976">23.976</button>
+      <button class="rate-btn active" data-rate="29.97">29.97</button>
+      <button class="rate-btn" data-rate="59.94">59.94</button>
+      <button class="rate-btn df-btn df-on" id="df-btn">DF</button>
+    </div>
+  </div>
+
+  <div id="tc-area">
+    <div id="tc">
+      <span class="hms">00<span class="col">:</span>00<span class="col">:</span>00</span><span class="fsep">;</span><span class="fr">00</span>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let selectedRate = '29.97';
+let dfEnabled = true;
+let isFlashing = false;
+let flashTimer = null;
+let audioCtx = null;
+let wakeLock = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const dateEl    = document.getElementById('date');
+const tcEl      = document.getElementById('tc');
+const dfBtn     = document.getElementById('df-btn');
+const rateBtns  = document.querySelectorAll('[data-rate]');
+
+// ── Timecode math ─────────────────────────────────────────────────────────────
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// Drop frame for 29.97 fps (drop 2 frame numbers at each non-10th minute mark)
+function dfConvert29(f) {
+  const D = 2, firstMin = 1800, fpMin = 1798, fp10 = 17982;
+  const g10 = Math.floor(f / fp10);
+  const rem = f % fp10;
+  const g1  = rem < firstMin ? 0 : Math.floor((rem - firstMin) / fpMin) + 1;
+  const n   = f + D * (g10 * 9 + g1);
+  return { hh: Math.floor(n/108000)%24, mm: Math.floor(n/1800)%60, ss: Math.floor(n/30)%60, ff: n%30 };
+}
+
+// Drop frame for 59.94 fps (drop 4 frame numbers at each non-10th minute mark)
+function dfConvert59(f) {
+  const D = 4, firstMin = 3600, fpMin = 3596, fp10 = 35964;
+  const g10 = Math.floor(f / fp10);
+  const rem = f % fp10;
+  const g1  = rem < firstMin ? 0 : Math.floor((rem - firstMin) / fpMin) + 1;
+  const n   = f + D * (g10 * 9 + g1);
+  return { hh: Math.floor(n/216000)%24, mm: Math.floor(n/3600)%60, ss: Math.floor(n/60)%60, ff: n%60 };
+}
+
+function getTimecode() {
+  const now = new Date();
+  const ms  = now.getHours()   * 3_600_000
+            + now.getMinutes() * 60_000
+            + now.getSeconds() * 1_000
+            + now.getMilliseconds();
+
+  if (selectedRate === '23.976') {
+    const f = Math.floor(ms * 24000 / 1001000);
+    return { hh: Math.floor(f/86400)%24, mm: Math.floor(f/1440)%60, ss: Math.floor(f/24)%60, ff: f%24, drop: false };
+  }
+
+  if (selectedRate === '29.97') {
+    const f = Math.floor(ms * 30000 / 1001000);
+    if (dfEnabled) return { ...dfConvert29(f), drop: true };
+    return { hh: Math.floor(f/108000)%24, mm: Math.floor(f/1800)%60, ss: Math.floor(f/30)%60, ff: f%30, drop: false };
+  }
+
+  // 59.94
+  const f = Math.floor(ms * 60000 / 1001000);
+  if (dfEnabled) return { ...dfConvert59(f), drop: true };
+  return { hh: Math.floor(f/216000)%24, mm: Math.floor(f/3600)%60, ss: Math.floor(f/60)%60, ff: f%60, drop: false };
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+const DAYS   = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+let lastDateStr = '';
+let lastTCKey   = '';
+
+function render() {
+  const now = new Date();
+
+  const ds = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  if (ds !== lastDateStr) {
+    dateEl.textContent = ds;
+    lastDateStr = ds;
+  }
+
+  const tc  = getTimecode();
+  const key = `${tc.hh}|${tc.mm}|${tc.ss}|${tc.ff}|${tc.drop}`;
+  if (key !== lastTCKey) {
+    const sep = tc.drop ? ';' : ':';
+    tcEl.innerHTML =
+      `<span class="hms">${pad2(tc.hh)}<span class="col">:</span>${pad2(tc.mm)}<span class="col">:</span>${pad2(tc.ss)}</span>` +
+      `<span class="fsep">${sep}</span>` +
+      `<span class="fr">${pad2(tc.ff)}</span>`;
+    lastTCKey = key;
+  }
+
+  requestAnimationFrame(render);
+}
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playBeep() {
+  try {
+    const ctx  = ensureAudio();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 1000;
+    const t = ctx.currentTime;
+    gain.gain.setValueAtTime(0.5, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  } catch (_) {}
+}
+
+// ── Flash (slate/clap trigger) ────────────────────────────────────────────────
+const FPS_MAP = { '23.976': 23.976024, '29.97': 29.97003, '59.94': 59.94006 };
+
+function triggerFlash() {
+  if (isFlashing) return;
+  isFlashing = true;
+  playBeep();
+  document.body.classList.add('flash');
+
+  const duration = Math.round(3000 / FPS_MAP[selectedRate]); // 3 frames
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    document.body.classList.remove('flash');
+    isFlashing = false;
+  }, duration);
+}
+
+// ── Rate & DF controls ────────────────────────────────────────────────────────
+rateBtns.forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    selectedRate = btn.dataset.rate;
+    rateBtns.forEach(b => b.classList.toggle('active', b.dataset.rate === selectedRate));
+    // DF is not standard for 23.976 — dim the button but keep state
+    const dfApplicable = selectedRate !== '23.976';
+    dfBtn.style.opacity = dfApplicable ? '1' : '0.35';
+    dfBtn.style.pointerEvents = dfApplicable ? '' : 'none';
+  });
+});
+
+dfBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  dfEnabled = !dfEnabled;
+  dfBtn.classList.toggle('df-on', dfEnabled);
+});
+
+// ── Flash input triggers ──────────────────────────────────────────────────────
+// Volume buttons (Android Chrome) and spacebar (desktop testing)
+document.addEventListener('keydown', e => {
+  if (e.key === 'AudioVolumeUp' || e.key === 'AudioVolumeDown' || e.key === ' ') {
+    e.preventDefault();
+    triggerFlash();
+  }
+}, { passive: false });
+
+// Tap on the timecode area (works on iOS too)
+document.getElementById('tc-area').addEventListener('click', triggerFlash);
+
+// ── Screen wake lock ──────────────────────────────────────────────────────────
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+  } catch (_) {}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') acquireWakeLock();
+});
+
+// ── Screen orientation lock (PWA fullscreen only) ─────────────────────────────
+async function lockOrientation() {
+  try {
+    await screen.orientation.lock('landscape');
+  } catch (_) {}
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+acquireWakeLock();
+lockOrientation();
+requestAnimationFrame(render);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
