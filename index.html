@@ -245,26 +245,30 @@ function dfConvert59(f) {
 
 function getTimecode() {
   const now = new Date();
-  const ms  = now.getHours()   * 3_600_000
-            + now.getMinutes() * 60_000
-            + now.getSeconds() * 1_000
-            + now.getMilliseconds();
+  const hh  = now.getHours();
+  const mm  = now.getMinutes();
+  const ss  = now.getSeconds();
+  const sub = now.getMilliseconds(); // ms within current second
 
+  // NDF rates: HH:MM:SS = wall clock, FF = fractional frame within the second.
+  // This keeps the display locked to real time so jam-syncing at any point in
+  // the day sets downstream devices to the actual current time.
   if (selectedRate === '23.976') {
-    const f = Math.floor(ms * 24000 / 1001000);
-    return { hh: Math.floor(f/86400)%24, mm: Math.floor(f/1440)%60, ss: Math.floor(f/24)%60, ff: f%24, drop: false };
+    return { hh, mm, ss, ff: Math.floor(sub * 24000 / 1001000), drop: false };
   }
 
+  // DF rates use the full ms-since-midnight calculation so that proper SMPTE
+  // drop-frame frame numbers are produced at every minute boundary.
+  const msDay = hh * 3_600_000 + mm * 60_000 + ss * 1_000 + sub;
+
   if (selectedRate === '29.97') {
-    const f = Math.floor(ms * 30000 / 1001000);
-    if (dfEnabled) return { ...dfConvert29(f), drop: true };
-    return { hh: Math.floor(f/108000)%24, mm: Math.floor(f/1800)%60, ss: Math.floor(f/30)%60, ff: f%30, drop: false };
+    if (dfEnabled) return { ...dfConvert29(Math.floor(msDay * 30000 / 1001000)), drop: true };
+    return { hh, mm, ss, ff: Math.floor(sub * 30000 / 1001000), drop: false };
   }
 
   // 59.94
-  const f = Math.floor(ms * 60000 / 1001000);
-  if (dfEnabled) return { ...dfConvert59(f), drop: true };
-  return { hh: Math.floor(f/216000)%24, mm: Math.floor(f/3600)%60, ss: Math.floor(f/60)%60, ff: f%60, drop: false };
+  if (dfEnabled) return { ...dfConvert59(Math.floor(msDay * 60000 / 1001000)), drop: true };
+  return { hh, mm, ss, ff: Math.floor(sub * 60000 / 1001000), drop: false };
 }
 
 // ── Render loop ───────────────────────────────────────────────────────────────
